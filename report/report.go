@@ -217,6 +217,8 @@ func printContentReport(w io.Writer, title string, cr *types.ContentReport) {
 	_, _ = fmt.Fprintf(w, "  Imperative ratio:         %.2f\n", cr.ImperativeRatio)
 	_, _ = fmt.Fprintf(w, "  Information density:      %.2f\n", cr.InformationDensity)
 	_, _ = fmt.Fprintf(w, "  Instruction specificity:  %.2f\n", cr.InstructionSpecificity)
+	_, _ = fmt.Fprintf(w, "  Emphasis markers:         %d (%.2f per sentence)\n", cr.EmphasisMarkers, cr.EmphasisRatio)
+	_, _ = fmt.Fprintf(w, "  Rationale markers:        %d\n", cr.RationaleMarkers)
 	_, _ = fmt.Fprintf(w, "  Sections: %d  |  List items: %d  |  Code blocks: %d\n",
 		cr.SectionCount, cr.ListItemCount, cr.CodeBlockCount)
 }

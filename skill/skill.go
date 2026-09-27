@@ -6,6 +6,7 @@ package skill
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -74,7 +75,8 @@ type Skill struct {
 }
 
 // knownFrontmatterFields lists the frontmatter field names defined by the
-// skill spec. Fields not in this set trigger an "unrecognized field" warning.
+// skill spec. Fields not in this set trigger an "unrecognized field" warning,
+// unless they are known client extension fields.
 var knownFrontmatterFields = map[string]bool{
 	"name":          true,
 	"description":   true,
@@ -125,7 +127,31 @@ func Load(dir string) (*Skill, error) {
 	return skill, nil
 }
 
-// UnrecognizedFields returns frontmatter field names not in the spec.
+// clientExtensionFields lists frontmatter fields that are not part of the
+// Agent Skills spec but are defined by widely used agent clients. They are
+// reported separately from unknown fields: they are deliberate, but clients
+// that enforce the spec (claude.ai uploads, the Claude Skills API, skills-ref)
+// reject them. Values name the clients that define each field.
+var clientExtensionFields = map[string]string{
+	"when_to_use":              "Claude Code, Grok Build",
+	"when-to-use":              "Grok Build",
+	"argument-hint":            "Claude Code, Grok Build",
+	"arguments":                "Claude Code",
+	"disable-model-invocation": "Claude Code, Grok Build",
+	"user-invocable":           "Claude Code, Grok Build",
+	"disallowed-tools":         "Claude Code",
+	"model":                    "Claude Code",
+	"effort":                   "Claude Code",
+	"context":                  "Claude Code",
+	"agent":                    "Claude Code",
+	"background":               "Claude Code",
+	"shell":                    "Claude Code",
+	"paths":                    "Claude Code, Grok Build",
+	"hooks":                    "Claude Code",
+}
+
+// UnrecognizedFields returns frontmatter field names not in the spec,
+// including client extension fields, sorted for stable output.
 func (s *Skill) UnrecognizedFields() []string {
 	var unknown []string
 	for k := range s.RawFrontmatter {
@@ -133,7 +159,33 @@ func (s *Skill) UnrecognizedFields() []string {
 			unknown = append(unknown, k)
 		}
 	}
+	sort.Strings(unknown)
 	return unknown
+}
+
+// IsExtensionField reports whether name is a known client extension field.
+func IsExtensionField(name string) bool {
+	return clientExtensionFields[name] != ""
+}
+
+// ExtensionFields returns the known client extension fields present in the
+// frontmatter, sorted, mapped to the clients that define them.
+func (s *Skill) ExtensionFields() []ExtensionField {
+	var fields []ExtensionField
+	for k := range s.RawFrontmatter {
+		if clients := clientExtensionFields[k]; clients != "" {
+			fields = append(fields, ExtensionField{Name: k, Clients: clients})
+		}
+	}
+	sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
+	return fields
+}
+
+// ExtensionField is a frontmatter field defined by agent clients rather
+// than the Agent Skills spec.
+type ExtensionField struct {
+	Name    string
+	Clients string
 }
 
 // splitFrontmatter separates YAML frontmatter (between --- delimiters) from the body.

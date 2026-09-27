@@ -490,3 +490,132 @@ func TestCheckFrontmatter_AllowExtraFrontmatter(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckFrontmatter_UnicodeNames(t *testing.T) {
+	t.Run("unicode lowercase letters are valid, with a portability warning", func(t *testing.T) {
+		s := makeSkill("/tmp/données", "données", "Use when working with data.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Error, "name")
+		requireResultContaining(t, results, types.Warning, "non-ASCII")
+	})
+
+	t.Run("CJK names are valid", func(t *testing.T) {
+		s := makeSkill("/tmp/数据分析", "数据分析", "Use when analyzing data.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Error, "name")
+	})
+
+	t.Run("NFKC-equivalent name and directory match", func(t *testing.T) {
+		// "ﬁ" (U+FB01) normalizes to "fi" under NFKC.
+		s := makeSkill("/tmp/pdf-ﬁller", "pdf-filler", "Use when filling PDFs.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Error, "does not match directory")
+	})
+
+	t.Run("uppercase unicode is rejected", func(t *testing.T) {
+		s := makeSkill("/tmp/Données", "Données", "Use when working with data.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Error, "must be lowercase alphanumeric")
+	})
+
+	t.Run("punctuation is rejected", func(t *testing.T) {
+		s := makeSkill("/tmp/my_skill", "my_skill", "Use when testing.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Error, "must be lowercase alphanumeric")
+	})
+
+	t.Run("ASCII names get no portability warning", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Use when testing.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Warning, "non-ASCII")
+	})
+}
+
+func TestCheckFrontmatter_ReservedWords(t *testing.T) {
+	s := makeSkill("/tmp/claude-helper", "claude-helper", "Use when testing.")
+	results := CheckFrontmatter(s, Options{})
+	requireResultContaining(t, results, types.Warning, `reserved word "claude"`)
+
+	s = makeSkill("/tmp/pdf-tools", "pdf-tools", "Use when testing.")
+	results = CheckFrontmatter(s, Options{})
+	requireNoResultContaining(t, results, types.Warning, "reserved word")
+}
+
+func TestCheckFrontmatter_DescriptionStyle(t *testing.T) {
+	t.Run("XML tags", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Processes <b>PDF</b> files. Use when handling PDFs.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Warning, "XML tags")
+	})
+
+	t.Run("comparison operators are not XML tags", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Flags files where size < 10 and depth > 2. Use when auditing.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Warning, "XML tags")
+	})
+
+	t.Run("first person", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "I can help you process Excel files. Use when working with spreadsheets.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Info, "first person")
+	})
+
+	t.Run("second person", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "You can use this to process Excel files when working with spreadsheets.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Info, "addresses the reader")
+	})
+
+	t.Run("i.e. is not first person", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Processes tabular files, i.e. CSV and TSV. Use when analyzing data.")
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Info, "first person")
+	})
+
+	t.Run("missing when-to-use", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Processes Excel files and generates reports.")
+		results := CheckFrontmatter(s, Options{})
+		requireResultContaining(t, results, types.Info, "does not say when to use")
+	})
+
+	t.Run("when_to_use field satisfies the when check", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Processes Excel files and generates reports.")
+		s.RawFrontmatter["when_to_use"] = "Spreadsheet work."
+		results := CheckFrontmatter(s, Options{})
+		requireNoResultContaining(t, results, types.Info, "does not say when to use")
+	})
+
+	t.Run("well-formed description", func(t *testing.T) {
+		s := makeSkill("/tmp/my-skill", "my-skill", "Extracts text and tables from PDF files. Use when working with PDFs or forms.")
+		results := CheckFrontmatter(s, Options{})
+		for _, r := range results {
+			if r.Level == types.Info || r.Level == types.Warning {
+				t.Errorf("unexpected finding: %s", r.Message)
+			}
+		}
+	})
+}
+
+func TestCheckFrontmatter_ExtensionFields(t *testing.T) {
+	s := makeSkill("/tmp/my-skill", "my-skill", "Use when testing.")
+	s.RawFrontmatter["disable-model-invocation"] = true
+	s.RawFrontmatter["custom"] = "x"
+	results := CheckFrontmatter(s, Options{})
+	requireResultContaining(t, results, types.Info, `"disable-model-invocation" is a client extension field (Claude Code, Grok Build)`)
+	requireNoResultContaining(t, results, types.Warning, `unrecognized field: "disable-model-invocation"`)
+	requireResult(t, results, types.Warning, `unrecognized field: "custom"`)
+
+	results = CheckFrontmatter(s, Options{AllowExtraFrontmatter: true})
+	requireNoResultContaining(t, results, types.Info, "client extension field")
+}
+
+func TestCheckFrontmatter_ListingLength(t *testing.T) {
+	s := makeSkill("/tmp/my-skill", "my-skill", strings.Repeat("d", 1000)+" Use when testing.")
+	s.RawFrontmatter["when_to_use"] = strings.Repeat("w", 600)
+	results := CheckFrontmatter(s, Options{})
+	requireResultContaining(t, results, types.Warning, "truncates the combined text at 1536 characters")
+
+	s.RawFrontmatter["when_to_use"] = "short"
+	results = CheckFrontmatter(s, Options{})
+	requireNoResultContaining(t, results, types.Warning, "truncates the combined text")
+}

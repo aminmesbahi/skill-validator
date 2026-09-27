@@ -247,6 +247,31 @@ func TestEvaluateSkill_CacheRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEvaluateSkill_EditedContentIsRescored(t *testing.T) {
+	dir := makeSkillDir(t, map[string]string{"ref.md": "# Ref"})
+	client := &mockLLMClient{responses: []string{skillJSON, refJSON}}
+	if _, err := EvaluateSkill(context.Background(), dir, client, Options{MaxLen: 8000}); err != nil {
+		t.Fatalf("first call error = %v", err)
+	}
+
+	// Edit both files: the cached scores no longer describe them.
+	edited := "---\nname: test-skill\ndescription: A test skill\n---\n# Test Skill\nNew instructions.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "references", "ref.md"), []byte("# Ref v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	client2 := &mockLLMClient{responses: []string{skillJSON, refJSON}}
+	if _, err := EvaluateSkill(context.Background(), dir, client2, Options{MaxLen: 8000}); err != nil {
+		t.Fatalf("second call error = %v", err)
+	}
+	if client2.callIdx != 2 {
+		t.Errorf("expected edited SKILL.md and reference to be re-scored (2 calls), got %d", client2.callIdx)
+	}
+}
+
 func TestEvaluateSkill_Rescore(t *testing.T) {
 	dir := makeSkillDir(t, nil)
 	client := &mockLLMClient{responses: []string{skillJSON}}

@@ -109,7 +109,7 @@ func EvaluateSkill(ctx context.Context, dir string, client judge.LLMClient, opts
 		cacheKey := judge.CacheKey(client.Provider(), client.ModelName(), "skill", skillName, "SKILL.md")
 
 		if !opts.Rescore {
-			if cached, ok := judge.GetCached(cacheDir, cacheKey); ok {
+			if cached, ok := judge.GetCached(cacheDir, cacheKey); ok && cached.Fresh(s.RawContent) {
 				var scores judge.SkillScores
 				if err := json.Unmarshal(cached.Scores, &scores); err == nil {
 					result.SkillScores = &scores
@@ -129,13 +129,14 @@ func EvaluateSkill(ctx context.Context, dir string, client judge.LLMClient, opts
 			// Save to cache
 			scoresJSON, _ := json.Marshal(scores)
 			cacheResult := &judge.CachedResult{
-				Provider:    client.Provider(),
-				Model:       client.ModelName(),
-				File:        "SKILL.md",
-				Type:        "skill",
-				ContentHash: judge.ContentHash(s.RawContent),
-				ScoredAt:    time.Now().UTC(),
-				Scores:      scoresJSON,
+				Provider:      client.Provider(),
+				Model:         client.ModelName(),
+				File:          "SKILL.md",
+				Type:          "skill",
+				ContentHash:   judge.ContentHash(s.RawContent),
+				RubricVersion: judge.RubricVersion,
+				ScoredAt:      time.Now().UTC(),
+				Scores:        scoresJSON,
 			}
 			if err := judge.SaveCache(cacheDir, cacheKey, cacheResult); err != nil {
 				progress(opts, "warning", fmt.Sprintf("could not save cache: %v", err))
@@ -164,7 +165,7 @@ func EvaluateSkill(ctx context.Context, dir string, client judge.LLMClient, opts
 				var refScores *judge.RefScores
 
 				if !opts.Rescore {
-					if cached, ok := judge.GetCached(cacheDir, cacheKey); ok {
+					if cached, ok := judge.GetCached(cacheDir, cacheKey); ok && cached.Fresh(content) {
 						var scores judge.RefScores
 						if err := json.Unmarshal(cached.Scores, &scores); err == nil {
 							refScores = &scores
@@ -184,13 +185,14 @@ func EvaluateSkill(ctx context.Context, dir string, client judge.LLMClient, opts
 
 					scoresJSON, _ := json.Marshal(scores)
 					cacheResult := &judge.CachedResult{
-						Provider:    client.Provider(),
-						Model:       client.ModelName(),
-						File:        name,
-						Type:        "ref:" + name,
-						ContentHash: judge.ContentHash(content),
-						ScoredAt:    time.Now().UTC(),
-						Scores:      scoresJSON,
+						Provider:      client.Provider(),
+						Model:         client.ModelName(),
+						File:          name,
+						Type:          "ref:" + name,
+						ContentHash:   judge.ContentHash(content),
+						RubricVersion: judge.RubricVersion,
+						ScoredAt:      time.Now().UTC(),
+						Scores:        scoresJSON,
 					}
 					if err := judge.SaveCache(cacheDir, cacheKey, cacheResult); err != nil {
 						progress(opts, "warning", fmt.Sprintf("could not save cache: %v", err))
@@ -249,7 +251,7 @@ func EvaluateSingleFile(ctx context.Context, absPath string, client judge.LLMCli
 	cacheKey := judge.CacheKey(client.Provider(), client.ModelName(), "ref:"+fileName, skillName, fileName)
 
 	if !opts.Rescore {
-		if cached, ok := judge.GetCached(cacheDir, cacheKey); ok {
+		if cached, ok := judge.GetCached(cacheDir, cacheKey); ok && cached.Fresh(string(content)) {
 			var scores judge.RefScores
 			if err := json.Unmarshal(cached.Scores, &scores); err == nil {
 				progress(opts, "cached", fileName)
@@ -274,13 +276,14 @@ func EvaluateSingleFile(ctx context.Context, absPath string, client judge.LLMCli
 	// Save to cache
 	scoresJSON, _ := json.Marshal(scores)
 	cacheResult := &judge.CachedResult{
-		Provider:    client.Provider(),
-		Model:       client.ModelName(),
-		File:        fileName,
-		Type:        "ref:" + fileName,
-		ContentHash: judge.ContentHash(string(content)),
-		ScoredAt:    time.Now().UTC(),
-		Scores:      scoresJSON,
+		Provider:      client.Provider(),
+		Model:         client.ModelName(),
+		File:          fileName,
+		Type:          "ref:" + fileName,
+		ContentHash:   judge.ContentHash(string(content)),
+		RubricVersion: judge.RubricVersion,
+		ScoredAt:      time.Now().UTC(),
+		Scores:        scoresJSON,
 	}
 	if err := judge.SaveCache(cacheDir, cacheKey, cacheResult); err != nil {
 		progress(opts, "warning", fmt.Sprintf("could not save cache: %v", err))

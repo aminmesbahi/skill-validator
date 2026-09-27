@@ -17,6 +17,15 @@ var recognizedDirs = map[string]bool{
 	"assets":     true,
 }
 
+// conventionDirs lists directories outside the spec's layout that have
+// established, documented contents. They are accepted without warning and
+// excluded from token accounting, because agents do not load them while
+// using the skill.
+var conventionDirs = map[string]bool{
+	"evals":  true, // eval test cases, evals/evals.json (agentskills.io)
+	"agents": true, // client metadata, e.g. agents/openai.yaml (OpenAI Codex)
+}
+
 // Files commonly found in repos but not intended for agent consumption.
 // Per Anthropic best practices: "A skill should only contain essential files
 // that directly support its functionality."
@@ -89,7 +98,7 @@ func CheckStructure(dir string, opts Options) []types.Result {
 			}
 			continue
 		}
-		if !recognizedDirs[name] && !allowedDirs[name] {
+		if !recognizedDirs[name] && !allowedDirs[name] && !conventionDirs[name] {
 			msg := fmt.Sprintf("unknown directory: %s/", name)
 			if subEntries, err := os.ReadDir(filepath.Join(dir, name)); err == nil {
 				fileCount := 0

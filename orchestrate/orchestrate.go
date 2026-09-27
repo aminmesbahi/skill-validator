@@ -1,6 +1,7 @@
 // Package orchestrate provides the core validation and analysis orchestration
 // for skill directories. It coordinates calls to structure, content,
-// contamination, and link checking packages, returning unified reports.
+// contamination, security, and link checking packages, returning unified
+// reports.
 //
 // This package is intended for library consumers who want to run skill
 // validation without the CLI layer.
@@ -12,6 +13,7 @@ import (
 	"github.com/agent-ecosystem/skill-validator/contamination"
 	"github.com/agent-ecosystem/skill-validator/content"
 	"github.com/agent-ecosystem/skill-validator/links"
+	"github.com/agent-ecosystem/skill-validator/security"
 	"github.com/agent-ecosystem/skill-validator/skill"
 	"github.com/agent-ecosystem/skill-validator/skillcheck"
 	"github.com/agent-ecosystem/skill-validator/structure"
@@ -31,6 +33,9 @@ const (
 	GroupContent CheckGroup = "content"
 	// GroupContamination enables cross-language contamination analysis.
 	GroupContamination CheckGroup = "contamination"
+	// GroupSecurity enables static scanning for risky patterns (prompt
+	// injection, exfiltration, remote code execution, committed secrets).
+	GroupSecurity CheckGroup = "security"
 )
 
 // AllGroups returns a map with all check groups enabled.
@@ -40,6 +45,7 @@ func AllGroups() map[CheckGroup]bool {
 		GroupLinks:         true,
 		GroupContent:       true,
 		GroupContamination: true,
+		GroupSecurity:      true,
 	}
 }
 
@@ -61,6 +67,13 @@ func RunAllChecks(ctx context.Context, dir string, opts Options) *types.Report {
 		rpt.Results = append(rpt.Results, vr.Results...)
 		rpt.TokenCounts = vr.TokenCounts
 		rpt.OtherTokenCounts = vr.OtherTokenCounts
+	}
+
+	// Security scan reads files directly; a SKILL.md that fails to parse is
+	// still scanned.
+	if opts.Enabled[GroupSecurity] {
+		s, _ := skill.Load(dir)
+		rpt.Results = append(rpt.Results, security.Analyze(dir, s)...)
 	}
 
 	// Load skill for links/content/contamination checks
@@ -92,6 +105,7 @@ func RunAllChecks(ctx context.Context, dir string, opts Options) *types.Report {
 		if opts.Enabled[GroupContent] && rawContent != "" {
 			cr := content.Analyze(rawContent)
 			rpt.ContentReport = cr
+			rpt.Results = append(rpt.Results, content.Advisories(cr, "SKILL.md")...)
 		}
 
 		// Contamination analysis works on raw content
@@ -146,6 +160,7 @@ func RunContentAnalysis(dir string) *types.Report {
 	rpt.ContentReport = content.Analyze(s.RawContent)
 	rpt.Results = append(rpt.Results,
 		types.ResultContext{Category: "Content"}.Pass("content analysis complete"))
+	rpt.Results = append(rpt.Results, content.Advisories(rpt.ContentReport, "SKILL.md")...)
 
 	skillcheck.AnalyzeReferences(dir, rpt)
 
@@ -198,6 +213,15 @@ func RunLinkChecks(ctx context.Context, dir string) *types.Report {
 			types.ResultContext{Category: "Links"}.Pass("all link checks passed"))
 	}
 
+	rpt.Tally()
+	return rpt
+}
+
+// RunSecurityAnalysis scans a single skill directory for risky patterns.
+func RunSecurityAnalysis(dir string) *types.Report {
+	rpt := &types.Report{SkillDir: dir}
+	s, _ := skill.Load(dir)
+	rpt.Results = append(rpt.Results, security.Analyze(dir, s)...)
 	rpt.Tally()
 	return rpt
 }

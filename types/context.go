@@ -82,3 +82,13 @@ func (c ResultContext) ErrorAtLine(file string, line int, msg string) Result {
 func (c ResultContext) ErrorAtLinef(file string, line int, format string, args ...any) Result {
 	return c.result(Error, file, line, fmt.Sprintf(format, args...))
 }
+
+// WarnAtLinef creates a formatted warning result with an explicit file and line number.
+func (c ResultContext) WarnAtLinef(file string, line int, format string, args ...any) Result {
+	return c.result(Warning, file, line, fmt.Sprintf(format, args...))
+}
+
+// InfoAtLinef creates a formatted info result with an explicit file and line number.
+func (c ResultContext) InfoAtLinef(file string, line int, format string, args ...any) Result {
+	return c.result(Info, file, line, fmt.Sprintf(format, args...))
+}

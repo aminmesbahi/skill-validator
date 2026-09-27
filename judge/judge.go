@@ -120,7 +120,7 @@ const skillJudgePrompt = `You are evaluating the quality of an "Agent Skill" —
    - 4: Mostly concrete and actionable with occasional abstract guidance that lacks specific steps
    - 5: Highly specific, step-by-step instructions an agent can execute without interpretation
 
-3. **Token Efficiency** (1-5): How concise is the skill? Does every token earn its place in the context window, or is there redundant prose, boilerplate, or filler that could be trimmed without losing instructional value?
+3. **Token Efficiency** (1-5): How concise is the skill? Does every token earn its place in the context window, or is there redundant prose, boilerplate, or filler that could be trimmed without losing instructional value? For each passage, ask whether an agent would get the task wrong without it. Agents act on the instructions they are given, so instructions that do not apply to most tasks cost extra steps as well as tokens; detail needed only in some cases belongs in a separate reference file the skill points to.
    - 1: Extremely verbose, heavy boilerplate; could cut 50%+ without losing instructional value
    - 2: Notably verbose; significant sections of redundant explanation, filler, or repeated content that could be cut
    - 3: Reasonably concise with some unnecessary verbosity; ~20-30% could be trimmed
@@ -134,14 +134,14 @@ const skillJudgePrompt = `You are evaluating the quality of an "Agent Skill" —
    - 4: Well-focused on its purpose with only brief mentions of adjacent concerns that are clearly delineated
    - 5: Tightly scoped to a single purpose and technology; no content an agent could misapply
 
-5. **Directive Precision** (1-5): Does the skill use precise, unambiguous directives (must, always, never, ensure) or does it hedge with vague suggestions (consider, may, could, possibly)? Are conditional sections clearly gated with explicit criteria for when to continue, skip, or abort?
-   - 1: Mostly vague suggestions and hedged language; an agent would not know what is required vs. optional
-   - 2: More hedging than precision; important instructions are often phrased as suggestions
-   - 3: Mix of precise directives and vague guidance; critical steps are usually precise but supporting guidance hedges
-   - 4: Mostly precise directives with occasional hedging on less critical points; conditional sections have reasonably clear gates
-   - 5: Consistently precise, imperative directives throughout; every instruction is unambiguous about whether it is required; conditional paths have explicit continue/abort criteria
+5. **Directive Precision** (1-5): Is every instruction unambiguous about whether it is required, optional, or conditional, and are conditional sections gated with explicit criteria for when to continue, skip, or abort? Where an instruction's purpose is not obvious, does the skill say why it matters, so an agent can apply it correctly in cases the skill did not anticipate? Judge precision, not intensity: plain wording ("Run the tests before committing") is as precise as capitalized wording ("You MUST ALWAYS run the tests"). Emphatic language (CRITICAL, MUST, NEVER) on many lines is a weakness — current models follow instructions closely and overapply shouted rules, and when everything is emphasized nothing stands out.
+   - 1: Mostly vague or hedged; an agent would not know what is required vs. optional
+   - 2: Important instructions are often hedged or ambiguous, or emphasis is so pervasive that priorities are unclear
+   - 3: Critical steps are clear, but supporting guidance hedges, conditions are loosely gated, or emphasis is overused
+   - 4: Clear about what is required throughout, with reasonably gated conditions; reasons are given for most non-obvious rules; emphasis, if any, is rare
+   - 5: Every instruction is unambiguous about whether and when it applies; conditional paths have explicit continue/abort criteria; non-obvious rules state their reason; emphasis is reserved for at most one or two genuinely critical points
 
-6. **Novelty** (1-5): How much of this skill's content provides information beyond what you would already know from training data? Does it convey project-specific conventions, proprietary APIs, internal workflows, or non-obvious domain knowledge — or does it mostly restate common programming knowledge you already have?
+6. **Novelty** (1-5): How much of this skill's content provides information beyond what you would already know from training data? Does it convey project-specific conventions, proprietary APIs, internal workflows, or non-obvious domain knowledge — or does it mostly restate common programming knowledge you already have? Content an agent could discover by itself in a few steps — directory listings, file-by-file overviews, restated README or API documentation — counts as common knowledge: agents follow such content but it rarely improves their results.
    - 1: Almost entirely common knowledge any LLM would already know; standard library docs, basic patterns, introductory tutorials
    - 2: Mostly common knowledge with a few pieces of genuinely new information (e.g., a specific version pin, one non-obvious convention) embedded in otherwise familiar content
    - 3: Roughly equal mix of common knowledge and genuinely new information; the novel parts are useful but interspersed with content you already know well
@@ -220,8 +220,10 @@ const novelInfoPrompt = `You just scored a document on novelty. It scored high (
 In 1-2 sentences, identify which specific details are novel — for example, proprietary API names or signatures, internal conventions, unpublished workflows, organization-specific patterns, or non-standard configuration details. Focus on what a human reviewer should fact-check. Respond with plain text only, no JSON.` + contentWrapperNote
 
 // DefaultMaxContentLen is the default maximum content length sent to the judge (characters).
-// Use 0 to disable truncation.
-const DefaultMaxContentLen = 8000
+// It covers a SKILL.md at the spec's recommended 5,000-token ceiling, so the
+// judge sees the whole file it rates for token efficiency. Use 0 to disable
+// truncation.
+const DefaultMaxContentLen = 20000
 
 const (
 	contentOpenDelim  = "<<<UNTRUSTED_CONTENT_START>>>"
@@ -418,8 +420,11 @@ func AggregateRefScores(results []*RefScores) *RefScores {
 // --- Internal helpers ---
 
 func formatUserContent(content string, maxLen int) string {
-	if maxLen > 0 && len(content) > maxLen {
-		content = content[:maxLen]
+	// maxLen is in characters (Unicode code points), matching
+	// DefaultMaxContentLen. Slicing bytes would split multibyte characters
+	// and cut CJK content to a third of the intended length.
+	if maxLen > 0 && utf8.RuneCountInString(content) > maxLen {
+		content = string([]rune(content)[:maxLen])
 	}
 	content = strings.ReplaceAll(content, contentOpenDelim, "")
 	content = strings.ReplaceAll(content, contentCloseDelim, "")

@@ -55,13 +55,13 @@ require an API key. This is useful when the CLI is already authenticated
 
 func init() {
 	scoreEvaluateCmd.Flags().StringVar(&evalProvider, "provider", "anthropic", "LLM provider: anthropic, openai, or claude-cli")
-	scoreEvaluateCmd.Flags().StringVar(&evalModel, "model", "", "model name (default: claude-sonnet-4-5-20250929 for anthropic, gpt-5.2 for openai, sonnet for claude-cli)")
+	scoreEvaluateCmd.Flags().StringVar(&evalModel, "model", "", "model name (default: claude-sonnet-5 for anthropic, gpt-5.2 for openai, sonnet for claude-cli)")
 	scoreEvaluateCmd.Flags().StringVar(&evalBaseURL, "base-url", "", "API base URL (for openai-compatible endpoints)")
 	scoreEvaluateCmd.Flags().BoolVar(&evalRescore, "rescore", false, "re-score and overwrite cached results")
 	scoreEvaluateCmd.Flags().BoolVar(&evalSkillOnly, "skill-only", false, "score only SKILL.md, skip reference files")
 	scoreEvaluateCmd.Flags().BoolVar(&evalRefsOnly, "refs-only", false, "score only reference files, skip SKILL.md")
 	scoreEvaluateCmd.Flags().StringVar(&evalDisplay, "display", "aggregate", "reference score display: aggregate or files")
-	scoreEvaluateCmd.Flags().BoolVar(&evalFullContent, "full-content", false, "send full file content to LLM (default: truncate to 8,000 chars)")
+	scoreEvaluateCmd.Flags().BoolVar(&evalFullContent, "full-content", false, "send full file content to LLM (default: truncate to 20,000 chars)")
 	scoreEvaluateCmd.Flags().StringVar(&evalMaxTokensStyle, "max-tokens-style", "auto", "token parameter style: auto, max_tokens, or max_completion_tokens")
 	scoreCmd.AddCommand(scoreEvaluateCmd)
 }

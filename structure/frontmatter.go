@@ -4,13 +4,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/agent-ecosystem/skill-validator/skill"
 	"github.com/agent-ecosystem/skill-validator/types"
 )
-
-var namePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Field length limits from the spec are in characters, which this package
 // counts as Unicode code points (the same unit as the skills-ref reference
@@ -34,20 +35,7 @@ func CheckFrontmatter(s *skill.Skill, opts Options) []types.Result {
 	if name == "" {
 		results = append(results, ctx.Error("name is required"))
 	} else {
-		if n := utf8.RuneCountInString(name); n > maxNameChars {
-			results = append(results, ctx.Errorf("name exceeds %d characters (%d)", maxNameChars, n))
-		}
-		if !namePattern.MatchString(name) {
-			results = append(results, ctx.Errorf("name %q must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens", name))
-		}
-		// Check that name matches directory name
-		dirName := filepath.Base(s.Dir)
-		if name != dirName {
-			results = append(results, ctx.Errorf("name does not match directory name (expected %q, got %q)", dirName, name))
-		}
-		if len(results) == 0 || (name != "" && namePattern.MatchString(name)) {
-			results = append(results, ctx.Passf("name: %q (valid)", name))
-		}
+		results = append(results, checkName(ctx, name, filepath.Base(s.Dir))...)
 	}
 
 	// Check description
@@ -61,7 +49,9 @@ func CheckFrontmatter(s *skill.Skill, opts Options) []types.Result {
 	} else {
 		results = append(results, ctx.Passf("description: (%d chars)", n))
 		results = append(results, checkDescriptionKeywordStuffing(ctx, desc)...)
+		results = append(results, checkDescriptionStyle(ctx, desc, s.RawFrontmatter)...)
 	}
+	results = append(results, checkListingLength(ctx, desc, s.RawFrontmatter)...)
 
 	// Check optional license
 	if s.Frontmatter.License != "" {
@@ -104,13 +94,139 @@ func CheckFrontmatter(s *skill.Skill, opts Options) []types.Result {
 		}
 	}
 
-	// Warn on unrecognized fields (unless extra frontmatter is allowed)
+	// Warn on unrecognized fields (unless extra frontmatter is allowed).
+	// Known client extensions are deliberate, so they get a portability
+	// note instead of a warning.
 	if !opts.AllowExtraFrontmatter {
+		for _, field := range s.ExtensionFields() {
+			results = append(results, ctx.Infof(
+				"%q is a client extension field (%s), not part of the Agent Skills spec — "+
+					"clients that enforce the spec (claude.ai uploads, the Claude Skills API, skills-ref) reject it",
+				field.Name, field.Clients))
+		}
 		for _, field := range s.UnrecognizedFields() {
-			results = append(results, ctx.Warnf("unrecognized field: %q", field))
+			if !skill.IsExtensionField(field) {
+				results = append(results, ctx.Warnf("unrecognized field: %q", field))
+			}
 		}
 	}
 
+	return results
+}
+
+// checkName validates the name field the way the spec's skills-ref
+// reference validator does: NFKC-normalized, lowercase Unicode letters,
+// digits, and hyphens, matching the (normalized) directory name.
+func checkName(ctx types.ResultContext, name, dirName string) []types.Result {
+	var results []types.Result
+	normalized := norm.NFKC.String(strings.TrimSpace(name))
+
+	if n := utf8.RuneCountInString(normalized); n > maxNameChars {
+		results = append(results, ctx.Errorf("name exceeds %d characters (%d)", maxNameChars, n))
+	}
+	valid := validNameChars(normalized)
+	if !valid {
+		results = append(results, ctx.Errorf("name %q must be lowercase alphanumeric with hyphens, no leading/trailing/consecutive hyphens", name))
+	}
+	if normalized != norm.NFKC.String(dirName) {
+		results = append(results, ctx.Errorf("name does not match directory name (expected %q, got %q)", dirName, name))
+	}
+	if !valid {
+		return results
+	}
+
+	results = append(results, ctx.Passf("name: %q (valid)", name))
+	if !asciiNamePattern.MatchString(normalized) {
+		results = append(results, ctx.Warnf(
+			"name %q uses non-ASCII characters — the spec allows them, but the Claude API "+
+				"and some agent clients accept only a-z, 0-9, and hyphens", name))
+	}
+	for _, word := range reservedNameWords {
+		if strings.Contains(normalized, word) {
+			results = append(results, ctx.Warnf(
+				"name %q contains the reserved word %q — the Claude API rejects skill names containing it", name, word))
+		}
+	}
+	return results
+}
+
+var asciiNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// reservedNameWords are rejected in skill names by the Claude API.
+var reservedNameWords = []string{"anthropic", "claude"}
+
+// validNameChars reports whether name is non-empty, lowercase, made of
+// Unicode letters, digits, and hyphens, with no leading, trailing, or
+// consecutive hyphens.
+func validNameChars(name string) bool {
+	if name == "" || name != strings.ToLower(name) {
+		return false
+	}
+	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") || strings.Contains(name, "--") {
+		return false
+	}
+	for _, r := range name {
+		if r != '-' && !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// maxListingChars is the length at which Claude Code truncates the combined
+// description and when_to_use text in its skill listing.
+const maxListingChars = 1536
+
+func checkListingLength(ctx types.ResultContext, desc string, raw map[string]any) []types.Result {
+	whenToUse, _ := raw["when_to_use"].(string)
+	if whenToUse == "" {
+		return nil
+	}
+	if n := utf8.RuneCountInString(desc) + utf8.RuneCountInString(whenToUse); n > maxListingChars {
+		return []types.Result{ctx.Warnf(
+			"description + when_to_use is %d characters — Claude Code truncates the combined text at %d characters in its skill listing; "+
+				"front-load the key use case and trigger words", n, maxListingChars)}
+	}
+	return nil
+}
+
+var (
+	xmlTagPattern = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9_-]*(\s[^<>]*)?/?>`)
+
+	// Point-of-view markers. The description is injected into the agent's
+	// system prompt, so first- and second-person phrasing reads as the wrong
+	// speaker. "I" is matched case-sensitively to avoid matching "i.e.".
+	firstPersonPattern  = regexp.MustCompile(`(^|[^\w'])(I|I'm|I'll|I've)\b|(?i)\bwe (can|will|help)\b`)
+	secondPersonPattern = regexp.MustCompile(`(?i)\byou can (use|ask)\b`)
+
+	// Phrases that tell the agent when to use the skill.
+	whenClausePattern = regexp.MustCompile(`(?i)\b(use (this|it|when|for|if|whenever|to)|when|whenever|if the user|if you|trigger|invoke|for (tasks|requests|questions|working))\b`)
+)
+
+// checkDescriptionStyle applies the description guidance shared by the
+// Agent Skills docs, Anthropic, and OpenAI: say what the skill does and when
+// to use it, in a consistent point of view, without XML tags.
+func checkDescriptionStyle(ctx types.ResultContext, desc string, raw map[string]any) []types.Result {
+	var results []types.Result
+	if xmlTagPattern.MatchString(desc) {
+		results = append(results, ctx.Warn(
+			"description contains XML tags — the Claude API rejects descriptions containing XML tags"))
+	}
+	if firstPersonPattern.MatchString(desc) {
+		results = append(results, ctx.Info(
+			"description is written in the first person — descriptions are injected into the agent's system prompt; "+
+				`write in the third person ("Processes Excel files…") or as an instruction ("Use when…")`))
+	} else if secondPersonPattern.MatchString(desc) {
+		results = append(results, ctx.Info(
+			`description addresses the reader ("you can use…") — write in the third person ("Processes Excel files…") or as an instruction ("Use when…")`))
+	}
+	_, hasWhenToUse := raw["when_to_use"]
+	_, hasWhenToUseDash := raw["when-to-use"]
+	if !hasWhenToUse && !hasWhenToUseDash && !whenClausePattern.MatchString(desc) {
+		results = append(results, ctx.Info(
+			`description does not say when to use the skill — agents choose skills from the description alone; `+
+				`add the triggers or contexts (e.g. "Use when…")`))
+	}
 	return results
 }
 

@@ -462,3 +462,36 @@ func TestAnalyze_ChineseFullContent(t *testing.T) {
 		t.Errorf("expected at least 3 imperative sentences, got %d", r.ImperativeCount)
 	}
 }
+
+func TestAnalyze_EmphasisAndRationale(t *testing.T) {
+	text := "You MUST run the tests. NEVER skip linting. ALWAYS format code. " +
+		"This is CRITICAL. IMPORTANT: commit often. Use `MUST` in code freely.\n\n" +
+		"```\nMUST NEVER ALWAYS\n```\n\n" +
+		"Run migrations first because the schema changes. Pin versions so that builds repeat."
+	r := Analyze(text)
+	if r.EmphasisMarkers != 5 {
+		t.Errorf("EmphasisMarkers = %d, want 5 (code excluded)", r.EmphasisMarkers)
+	}
+	if r.RationaleMarkers != 2 {
+		t.Errorf("RationaleMarkers = %d, want 2", r.RationaleMarkers)
+	}
+	if r.EmphasisRatio <= 0 {
+		t.Errorf("EmphasisRatio = %v, want > 0", r.EmphasisRatio)
+	}
+	if n := len(Advisories(r, "SKILL.md")); n != 1 {
+		t.Errorf("expected 1 emphasis advisory, got %d", n)
+	}
+}
+
+func TestAdvisories_PlainWording(t *testing.T) {
+	r := Analyze("Run the tests before committing. You must pin versions because builds drift.")
+	if r.EmphasisMarkers != 0 {
+		t.Errorf("lowercase directives are not emphasis, got %d", r.EmphasisMarkers)
+	}
+	if got := Advisories(r, "SKILL.md"); len(got) != 0 {
+		t.Errorf("expected no advisories, got %v", got)
+	}
+	if got := Advisories(nil, "SKILL.md"); got != nil {
+		t.Errorf("expected nil for nil report, got %v", got)
+	}
+}

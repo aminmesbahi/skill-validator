@@ -38,6 +38,7 @@
 //   - [github.com/agent-ecosystem/skill-validator/structure] — directory layout, frontmatter, tokens, internal links
 //   - [github.com/agent-ecosystem/skill-validator/content] — content quality metrics (density, specificity, imperative ratio)
 //   - [github.com/agent-ecosystem/skill-validator/contamination] — cross-language contamination detection
+//   - [github.com/agent-ecosystem/skill-validator/security] — risky-pattern scanning (EXPERIMENTAL)
 //   - [github.com/agent-ecosystem/skill-validator/links] — external HTTP/HTTPS link validation
 //   - [github.com/agent-ecosystem/skill-validator/skill] — SKILL.md parsing (frontmatter + body)
 //   - [github.com/agent-ecosystem/skill-validator/skillcheck] — skill detection and reference file analysis

@@ -162,6 +162,11 @@ func CheckOrphanFiles(dir, body string, opts Options) []types.Result {
 				noExt := strings.TrimSuffix(relPath, ext)
 				results = append(results, ctx.WarnFile(relPath,
 					fmt.Sprintf("file %s is referenced without its extension (as %s in %s) — include the %s extension so agents can reliably locate the file", relPath, noExt, reachedFrom[relPath], ext)))
+			} else if isNestedDocReference(relPath, reachedFrom[relPath]) {
+				results = append(results, types.ResultContext{Category: "Structure", File: relPath}.Infof(
+					"%s is linked only from %s, not from SKILL.md — agents may only preview files "+
+						"reached through another reference; keep references one level deep by linking it from SKILL.md",
+					relPath, reachedFrom[relPath]))
 			}
 		}
 
@@ -312,6 +317,19 @@ func containsPathToken(text, token string) bool {
 func isPathWordByte(b byte) bool {
 	return b == '_' || b == '-' ||
 		('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z') || ('0' <= b && b <= '9')
+}
+
+// isNestedDocReference reports whether a markdown document in references/
+// was first reached through another markdown document rather than from
+// SKILL.md. The BFS scans SKILL.md first, so reachedFrom holds the shortest
+// chain's parent. Links from scripts are not reference chains, so they don't
+// count.
+func isNestedDocReference(relPath, source string) bool {
+	if source == "" || source == "SKILL.md" {
+		return false
+	}
+	isMarkdown := func(p string) bool { return strings.EqualFold(filepath.Ext(p), ".md") }
+	return strings.HasPrefix(relPath, "references/") && isMarkdown(relPath) && isMarkdown(source)
 }
 
 // markReached marks a file as reached, reads it if it's a text file, and

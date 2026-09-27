@@ -20,6 +20,7 @@ Spec compliance is table stakes. `skill-validator` goes further: it checks that 
   - [validate links](#validate-links)
   - [analyze content](#analyze-content)
   - [analyze contamination](#analyze-contamination)
+  - [analyze security](#analyze-security)
   - [check](#check)
   - [score evaluate](#score-evaluate)
   - [score report](#score-report)
@@ -41,6 +42,7 @@ Spec compliance is table stakes. `skill-validator` goes further: it checks that 
   - [Link validation](#link-validation-validate-links)
   - [Content analysis](#content-analysis-analyze-content)
   - [Contamination analysis](#contamination-analysis-analyze-contamination)
+  - [Security analysis](#security-analysis-analyze-security)
   - [LLM scoring](#llm-scoring-score-evaluate)
 - [Stability](#stability)
 - [Development](#development)
@@ -157,6 +159,7 @@ Commands map to skill development lifecycle stages:
 | Scaffolding | [`validate structure`](#validate-structure) | Does it conform to the spec and can agents use it? (structure, frontmatter, tokens, code fences, internal links, orphan files) |
 | Writing content | [`analyze content`](#analyze-content) | Is the instruction quality good? (density, specificity, imperative ratio) |
 | Adding examples | [`analyze contamination`](#analyze-contamination) | Am I introducing cross-language contamination? |
+| Security review | [`analyze security`](#analyze-security) | Does it contain prompt injection, credential access, remote code execution, or secrets? |
 | Review | [`validate links`](#validate-links) | Do external links still resolve? (HTTP/HTTPS) |
 | Quality scoring | [`score evaluate`](#score-evaluate) | How does an LLM judge rate this skill? (clarity, actionability, novelty, etc.) |
 | Comparing models | [`score report`](#score-report) | How do scores compare across different LLM providers/models? |
@@ -173,7 +176,7 @@ Use `--version` to print the installed version.
 | `2` | Warnings present, no errors |
 | `3` | CLI/usage error (bad flags, missing args) |
 
-Use `--strict` on `check` or `validate structure` to treat warnings as errors (exit 1 instead of 2). This is useful in CI pipelines where you want a binary pass/fail:
+Use `--strict` on `check`, `validate structure`, or `analyze security` to treat warnings as errors (exit 1 instead of 2). This is useful in CI pipelines where you want a binary pass/fail:
 
 ```
 skill-validator check --strict <path>
@@ -195,13 +198,13 @@ skill-validator validate structure --allow-nested-paths=assets/components <path>
 skill-validator validate structure --exclude-token-paths=site <path>
 ```
 
-Checks spec compliance: directory structure, frontmatter fields, token limits, skill ratio, code fence integrity, internal link validity, and orphan file detection.
+Checks spec compliance: directory structure, frontmatter fields, token limits, skill ratio, code fence integrity, internal link validity, orphan file detection, authoring conventions (description wording, reference depth, tables of contents, path separators), and `evals/evals.json`.
 
 | Flag | Effect |
 |---|---|
 | `--strict` | Treat warnings as errors (exit 1 instead of 2) |
 | `--skip-orphans` | Suppress warnings about unreferenced files in `scripts/`, `references/`, and `assets/` |
-| `--allow-extra-frontmatter` | Suppress warnings for non-spec frontmatter fields (e.g. `user-invokable`). Standard fields are still fully validated |
+| `--allow-extra-frontmatter` | Suppress warnings for non-spec frontmatter fields, and portability notes for known client extension fields (e.g. `disable-model-invocation`). Standard fields are still fully validated |
 | `--allow-flat-layouts` | Allow files at the skill root without warnings (see [Flat skill layouts](#flat-skill-layouts)) |
 | `--allow-dirs=evals,testing` | Accept specific non-standard directories without warnings (see [Allowing non-standard directories](#allowing-non-standard-directories)) |
 | `--allow-nested-paths=assets/components` | Allow deep nesting only within specific skill-relative paths (see [Allowing nesting at specific paths](#allowing-nesting-at-specific-paths)) |
@@ -254,6 +257,8 @@ Content Analysis
   Imperative ratio:         0.45
   Information density:      0.39
   Instruction specificity:  0.78
+  Emphasis markers:         2 (0.03 per sentence)
+  Rationale markers:        5
   Sections: 6  |  List items: 23  |  Code blocks: 8
 
 References Content Analysis
@@ -265,7 +270,7 @@ References Contamination Analysis
   Scope breadth: 0
 ```
 
-Metrics include word count, code block count/ratio, code languages, sentence count, imperative sentence ratio, information density, strong/weak language markers, instruction specificity, section count, and list item count. Reference files in `references/` are analyzed in aggregate. Use `--per-file` to see a breakdown by individual reference file.
+Metrics include word count, code block count/ratio, code languages, sentence count, imperative sentence ratio, information density, strong/weak language markers, instruction specificity, all-caps emphasis markers, rationale markers, section count, and list item count. When all-caps emphasis is dense, an informational note suggests plainer wording. Reference files in `references/` are analyzed in aggregate. Use `--per-file` to see a breakdown by individual reference file.
 
 ### analyze contamination
 
@@ -291,6 +296,23 @@ References Contamination Analysis
 
 Contamination scoring considers three factors: multi-interface tools (0.3 weight), application language mismatch across code blocks (0.4 weight), and scope breadth (0.3 weight). Auxiliary languages (shell, config formats, query languages, markup) are excluded from the mismatch calculation since they don't cause syntactic confusion with application languages. Reference files in `references/` are analyzed in aggregate. Use `--per-file` to see a breakdown by individual reference file.
 
+### analyze security
+
+```
+skill-validator analyze security <path>
+skill-validator analyze security --strict <path>
+```
+
+Scans every text file in the skill for patterns associated with the vulnerability classes found in public skill marketplaces: prompt injection, credential access and exfiltration, remote code execution, disabled safety controls, committed secrets, and invisible characters. Findings include the file and line:
+
+```
+Security
+  ⚠ scripts/install.sh:4: downloads a script and pipes it into a shell — the code that runs is not in the skill and can change at any time; bundle the script or pin and verify it
+  ✗ references/setup.md:12: contains what looks like an access token — remove it and rotate the credential; skills are shared with everyone who installs them
+```
+
+See [Security analysis](#security-analysis-analyze-security) for the full list of checks.
+
 ### check
 
 ```
@@ -307,7 +329,7 @@ skill-validator check --allow-nested-paths=assets/components <path>
 skill-validator check --exclude-token-paths=site <path>
 ```
 
-Runs all checks (structure + links + content + contamination).
+Runs all checks (structure + links + content + contamination + security).
 
 | Flag | Effect |
 |---|---|
@@ -322,7 +344,7 @@ Runs all checks (structure + links + content + contamination).
 | `--allow-nested-paths=assets/components` | Allow deep nesting only within specific skill-relative paths (see [Allowing nesting at specific paths](#allowing-nesting-at-specific-paths)) |
 | `--exclude-token-paths=site` | Exclude specific skill-relative subtrees from non-standard token accounting (see [Excluding paths from non-standard token accounting](#excluding-paths-from-non-standard-token-accounting)) |
 
-Valid check groups: `structure`, `links`, `content`, `contamination`.
+Valid check groups: `structure`, `links`, `content`, `contamination`, `security`.
 
 ### score evaluate
 
@@ -344,7 +366,7 @@ skill-validator score evaluate --provider claude-cli <path>
 
 | Provider | Env var | Default model | Covers |
 |---|---|---|---|
-| `anthropic` (default) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-5-20250929` | Anthropic |
+| `anthropic` (default) | `ANTHROPIC_API_KEY` | `claude-sonnet-5` | Anthropic |
 | `openai` | `OPENAI_API_KEY` | `gpt-5.2` | OpenAI, Ollama, Together, Groq, Azure, etc. \*\* |
 | `claude-cli` | _(none)_ | `sonnet` | Claude CLI (uses locally authenticated `claude` binary) \* |
 
@@ -422,9 +444,9 @@ skill-validator score evaluate --provider openai --base-url http://localhost:114
 
 Auto-detection works for most OpenAI models, but OpenAI-compatible providers (Ollama, vLLM, Groq, etc.) vary in which parameter they support. When in doubt, check your provider's documentation.
 
-**Content truncation**: By default, file content is truncated to 8,000 characters before sending to the LLM. Use `--full-content` to send the entire file — useful for large reference files where the scoring should account for all content, at the cost of higher token usage.
+**Content truncation**: By default, file content is truncated to 20,000 characters before sending to the LLM — enough for a SKILL.md at the spec's recommended 5,000-token ceiling. The limit counts characters, not bytes, so non-Latin content is not cut short. Use `--full-content` to send the entire file — useful for large reference files where the scoring should account for all content, at the cost of higher token usage.
 
-**Caching**: Results are cached in `.score_cache/` inside the skill directory. Cache keys are based on provider, model, and file path, so different models produce separate cache entries while editing a file and re-running overwrites the previous result for that file. Use `--rescore` to force re-scoring and overwrite cached results.
+**Caching**: Results are cached in `.score_cache/` inside the skill directory. Cache keys are based on provider, model, and file path, so different models produce separate cache entries. A cached result is reused only while the file's content and the scoring rubric are unchanged; editing a file, or upgrading to a release with a revised rubric, re-scores it on the next run and overwrites the previous result. Use `--rescore` to force re-scoring and overwrite cached results.
 
 ### score report
 
@@ -432,7 +454,7 @@ Auto-detection works for most OpenAI models, but OpenAI-compatible providers (Ol
 skill-validator score report <path>
 skill-validator score report --list <path>
 skill-validator score report --compare <path>
-skill-validator score report --model claude-sonnet-4-5-20250929 <path>
+skill-validator score report --model claude-sonnet-5 <path>
 ```
 
 Views and compares cached LLM scores without making API calls.
@@ -506,6 +528,9 @@ skill-validator check -o json my-skill/
     "imperative_ratio": 0.35,
     "information_density": 0.30,
     "instruction_specificity": 0.78,
+    "emphasis_markers": 2,
+    "emphasis_ratio": 0.03,
+    "rationale_markers": 5,
     "section_count": 4,
     "list_item_count": 12
   },
@@ -695,16 +720,40 @@ See the [examples README](examples/README.md) for setup instructions.
 - [Link validation](#link-validation-validate-links)
 - [Content analysis](#content-analysis-analyze-content)
 - [Contamination analysis](#contamination-analysis-analyze-contamination)
+- [Security analysis](#security-analysis-analyze-security)
 - [LLM scoring](#llm-scoring-score-evaluate)
 
 ### Structure validation (`validate structure`)
 
 These checks validate conformance with the [Agent Skills specification](https://agentskills.io/specification) and perform additional checks:
 
-- **Structure**: `SKILL.md` exists; only recognized directories (`scripts/`, `references/`, `assets/`); no deep nesting; no orphan files
-- **Frontmatter**: required fields (`name`, `description`) are present and valid; `name` is lowercase alphanumeric with hyphens (1-64 chars) and matches the directory name; optional fields (`license`, `compatibility`, `metadata`, `allowed-tools`) conform to expected types and lengths; unrecognized fields are flagged
+- **Structure**: `SKILL.md` exists; only recognized directories (`scripts/`, `references/`, `assets/`, plus the conventional `evals/` and `agents/`); no deep nesting; no orphan files
+- **Frontmatter**: required fields (`name`, `description`) are present and valid; `name` is lowercase letters, digits, and hyphens (1-64 chars) and matches the directory name; optional fields (`license`, `compatibility`, `metadata`, `allowed-tools`) conform to expected types and lengths; unrecognized fields are flagged
 - **Read limit**: no single file is read past 8 MiB, so a pathological file cannot exhaust memory. A larger file's token count covers only its first 8 MiB and is flagged as such; the unclosed-fence and orphan checks skip it with a warning, since they need the whole file to be right
 
+**Name validation**
+- Names are validated the way the spec's [skills-ref](https://github.com/agentskills/agentskills/tree/main/skills-ref) reference validator does: NFKC-normalized, lowercase Unicode letters and digits plus hyphens, no leading, trailing, or consecutive hyphens, matching the (normalized) directory name
+- Non-ASCII names are valid per the spec but get a warning: the Claude API and some agent clients accept only `a-z`, `0-9`, and hyphens
+- Names containing `anthropic` or `claude` get a warning: the Claude API rejects them
+
+**Client extension fields**
+- Fields defined by agent clients rather than the spec — `when_to_use`, `argument-hint`, `arguments`, `disable-model-invocation`, `user-invocable`, `disallowed-tools`, `model`, `effort`, `context`, `agent`, `background`, `shell`, `paths`, `hooks` (Claude Code), and `when-to-use` (Grok Build) — get an informational portability note instead of an "unrecognized field" warning. Clients that enforce the spec (claude.ai uploads, the Claude Skills API, `skills-ref`) reject them
+- When `description` plus `when_to_use` exceeds 1,536 characters, a warning notes that Claude Code truncates the combined text in its skill listing
+
+**Description wording**
+- Descriptions containing XML tags get a warning: the Claude API rejects them
+- Informational notes flag descriptions written in the first person ("I can help…") or addressed to the reader ("You can use this…") — descriptions are injected into the agent's system prompt, so write in the third person ("Processes Excel files…") or as an instruction ("Use when…")
+- An informational note flags descriptions that never say when to use the skill; agents choose skills from the description alone
+
+**Authoring conventions**
+- **Reference depth**: markdown files in `references/` that are linked only from another reference file (not from SKILL.md) get an informational note — agents may only preview files reached through another reference, so keep references one level deep
+- **Table of contents**: markdown files in `references/` over 100 lines without a table of contents near the top get an informational note, so an agent that previews the top of the file still sees its scope
+- **Path separators**: file paths in SKILL.md written with backslashes (`scripts\helper.py`) get a warning; they fail on Unix systems
+
+**Evals**
+- `evals/evals.json` is validated against the [evaluating-skills](https://agentskills.io/skill-creation/evaluating-skills) format: a `skill_name` matching the skill, and a non-empty `evals` array whose test cases each have a unique `id`, a `prompt`, an `expected_output`, input `files` that exist inside the skill, and non-empty `assertions`
+- A skill with no `evals/evals.json` gets an informational note. Agent vendors and empirical studies agree that a skill's value should be measured by comparing runs with and without it; instructions in context are followed and cost tokens whether or not they help
+- Listing `evals` in `--allow-dirs` skips the format check, for skills that keep evals in their own format
 **Extraneous file detection**
 - Files like `README.md`, `CHANGELOG.md`, and `LICENSE` are flagged at the skill root -- these are for human readers, not agents, and may be loaded into the context window unnecessarily
 - `AGENTS.md` gets a specific warning: it's for repo-level agent configuration, not skill content, and should live outside the skill directory
@@ -726,7 +775,7 @@ These checks validate conformance with the [Agent Skills specification](https://
 - Per reference file: warns at 10,000 tokens, errors at 25,000 tokens
 - Total references: warns at 25,000 tokens, errors at 50,000 tokens
 - Asset files: text-based files in `assets/` (`.md`, `.tex`, `.py`, `.yaml`, `.yml`, `.tsx`, `.ts`, `.jsx`, `.sty`, `.mplstyle`, `.ipynb`) are counted and reported in an "Asset files" section — these are templates, guides, and configs that LLMs load into context; non-text assets (images, binaries) are ignored
-- Non-standard files (anything outside SKILL.md, references/, scripts/, assets/) are scanned separately and reported in an "Other files" section with per-file and total token counts
+- Non-standard files (anything outside SKILL.md, references/, scripts/, assets/, evals/, agents/) are scanned separately and reported in an "Other files" section with per-file and total token counts
 - Other files total: warns at 25,000 tokens, errors at 100,000 tokens
 
 **Holistic structure check**
@@ -786,9 +835,9 @@ skill-validator check --allow-flat-layouts my-skill/
 
 **Allowing non-standard directories**
 
-The spec defines three recognized directories (`scripts/`, `references/`, `assets/`). Any other directory at the skill root produces a warning. This relates to cross-platform skill file loading considerations described in [agent-ecosystem/agent-skill-implementation](https://github.com/agent-ecosystem/agent-skill-implementation).
+The spec defines three recognized directories (`scripts/`, `references/`, `assets/`). Two more have documented, conventional contents and are accepted without warning: `evals/` (test cases, per the [evaluating-skills guide](https://agentskills.io/skill-creation/evaluating-skills)) and `agents/` (client metadata such as OpenAI Codex's `agents/openai.yaml`). Agents do not load either while using the skill, so they are also excluded from token accounting. Any other directory at the skill root produces a warning. This relates to cross-platform skill file loading considerations described in [agent-ecosystem/agent-skill-implementation](https://github.com/agent-ecosystem/agent-skill-implementation).
 
-Some development workflows use additional directories that may produce unexpected behavior across agent platforms. For example, the [evaluating-skills guide](https://agentskills.io/skill-creation/evaluating-skills) recommends an `evals/` directory for evaluation test cases, and teams may keep integration test fixtures in a `testing/` directory. If you are not distributing cross-platform skills and want to suppress warnings for specific directories that you know your preferred agent platform supports, use the `--allow-dirs` flag to suppress warnings for specific directories by name:
+Some development workflows use additional directories that may produce unexpected behavior across agent platforms. For example, teams may keep integration test fixtures in a `testing/` directory. If you are not distributing cross-platform skills and want to suppress warnings for specific directories that you know your preferred agent platform supports, use the `--allow-dirs` flag to suppress warnings for specific directories by name:
 
 ```
 skill-validator validate structure --allow-dirs=evals my-skill/
@@ -853,7 +902,9 @@ Computes content quality metrics for SKILL.md and markdown files in `references/
 - **Imperative count / ratio**: sentences starting with imperative verbs (use, run, create, configure, etc.)
 - **Strong markers**: directive language count (must, always, never, required, ensure, etc.)
 - **Weak markers**: advisory language count (may, consider, could, optional, suggested, etc.)
-- **Instruction specificity**: strong / (strong + weak) — how directive vs advisory the language is
+- **Instruction specificity**: strong / (strong + weak) — how directive vs advisory the language is. This is descriptive, not a quality score: a skill that states when and why an instruction applies can be precise with few strong markers
+- **Emphasis markers / ratio**: all-caps emphasis (MUST, NEVER, ALWAYS, CRITICAL, IMPORTANT, ...) in prose, and its rate per sentence. At 5 or more markers and 0.1 or more per sentence, an informational note suggests plainer wording: current models follow instructions closely and [overtrigger on aggressive language](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices), and when many lines are emphasized none stands out
+- **Rationale markers**: phrases that explain why an instruction exists (because, so that, otherwise, to avoid, ...). Instructions that give their reason generalize better than bare rules
 - **Information density**: (code_block_ratio * 0.5) + (imperative_ratio * 0.5)
 - **Section count**: H2+ headers
 - **List item count**: bullet and numbered list items
@@ -870,6 +921,20 @@ Detects cross-language contamination — where code examples in one language cou
 - **Contamination score**: 3-factor formula — multi_interface (0.3) + application language mismatch (0.4) + breadth (0.3), capped at 1.0
 - **Contamination level**: high (≥0.5), medium (≥0.2), low (<0.2)
 
+### Security analysis (`analyze security`)
+
+Scans every text file in the skill (skipping hidden directories, binary files, and `evals/`, whose fixtures may legitimately contain attack samples) for narrow, high-precision signatures of the four vulnerability categories found in [a study of 31,132 marketplace skills](https://arxiv.org/abs/2601.10338), which found at least one such pattern in 26.1% of them:
+
+- **Prompt injection** (markdown files): text telling the agent to ignore prior instructions, override its system prompt or safety rules, or act without the user's knowledge
+- **Supply chain**: downloading code and piping it into a shell or interpreter (`curl … | sh`, `iwr … | iex`), and decoding and executing encoded payloads
+- **Data exfiltration**: access to credential stores (`~/.ssh`, `~/.aws`, `id_rsa`, the macOS keychain, ...) and sending environment variables over the network
+- **Privilege escalation**: flags that disable the agent's permission checks or sandbox, and `chmod 777`
+- **Committed secrets** (errors): private keys and access tokens with well-known formats (AWS, GitHub, GitLab, Anthropic, Slack)
+- **Invisible characters**: zero-width and text-direction override characters that can hide instructions from a human reviewer
+- **Unrestricted shell**: an informational note when `allowed-tools` pre-approves every shell command (`Bash`, `Bash(*)`)
+
+A clean result is not proof of safety; a finding is a prompt for human review. Security analysis also runs as part of `check`; use `--skip security` to disable it.
+
 ### LLM scoring (`score evaluate`)
 
 Uses an LLM-as-judge approach to evaluate skill content. The scoring prompts instruct the LLM to evaluate content on specific quality dimensions, returning structured JSON scores.
@@ -879,7 +944,7 @@ Uses an LLM-as-judge approach to evaluate skill content. The scoring prompts ins
 - **Actionability**: Can an agent follow them step-by-step?
 - **Token Efficiency**: Does every token earn its place in the context window?
 - **Scope Discipline**: Does it stay focused on its stated purpose?
-- **Directive Precision**: Does it use precise directives (must, always, never) vs vague suggestions?
+- **Directive Precision**: Is every instruction unambiguous about whether and when it applies, with reasons for non-obvious rules? Precision is judged separately from intensity: pervasive emphatic language (CRITICAL, MUST) counts against a skill
 - **Novelty**: How much content goes beyond what an LLM already knows from training data?
 
 **Reference files** are scored on 5 dimensions (1-5 each):
@@ -909,6 +974,7 @@ This project follows [semantic versioning](https://semver.org/) starting at v1.0
 **Experimental packages:**
 
 - `judge` — This package is under active development as the LLM scoring approach evolves. Its API may change in minor releases without a major version bump. The package doc comment includes an `EXPERIMENTAL` notice.
+- `security` — The rule set will grow as new attack patterns are documented. Its API and findings may change in minor releases. The package doc comment includes an `EXPERIMENTAL` notice.
 
 **What counts as a breaking change** (for stable packages):
 

@@ -14,8 +14,9 @@ import (
 )
 
 // defaultHTTPClient is used for all LLM API calls. It sets a timeout so
-// that a hanging upstream doesn't block the caller indefinitely.
-var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
+// that a hanging upstream doesn't block the caller indefinitely. It allows
+// for reasoning models, which can take well over 30 seconds to respond.
+var defaultHTTPClient = &http.Client{Timeout: 120 * time.Second}
 
 // lookPath is used to locate the claude binary. It is a variable so tests
 // can substitute a stub when the real binary is not installed.
@@ -70,7 +71,7 @@ func NewClient(opts ClientOptions) (LLMClient, error) {
 	case "anthropic":
 		model := opts.Model
 		if model == "" {
-			model = "claude-sonnet-4-5-20250929"
+			model = "claude-sonnet-5"
 		}
 		baseURL := "https://api.anthropic.com"
 		if opts.BaseURL != "" {

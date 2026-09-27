@@ -317,7 +317,7 @@ func TestNewClient_Anthropic(t *testing.T) {
 	if c.Provider() != "anthropic" {
 		t.Errorf("provider = %s, want anthropic", c.Provider())
 	}
-	if c.ModelName() != "claude-sonnet-4-5-20250929" {
+	if c.ModelName() != "claude-sonnet-5" {
 		t.Errorf("model = %s, want default", c.ModelName())
 	}
 }
@@ -982,12 +982,27 @@ func bodyBetweenDelims(t *testing.T, s string) string {
 }
 
 func TestFormatUserContent_Truncation(t *testing.T) {
-	longContent := strings.Repeat("a", 10000)
+	longContent := strings.Repeat("a", DefaultMaxContentLen+2000)
 	result := formatUserContent(longContent, DefaultMaxContentLen)
 
 	body := bodyBetweenDelims(t, result)
 	if len(body) != DefaultMaxContentLen {
 		t.Errorf("body len = %d, want %d", len(body), DefaultMaxContentLen)
+	}
+}
+
+func TestFormatUserContent_TruncationCountsCharacters(t *testing.T) {
+	// 3-byte CJK runes: a byte-based cut would keep a third of the
+	// characters and could split the last rune.
+	longContent := strings.Repeat("技", 150)
+	result := formatUserContent(longContent, 100)
+
+	body := bodyBetweenDelims(t, result)
+	if !utf8.ValidString(body) {
+		t.Fatal("truncated body is not valid UTF-8")
+	}
+	if n := utf8.RuneCountInString(body); n != 100 {
+		t.Errorf("body = %d characters, want 100", n)
 	}
 }
 
@@ -1445,5 +1460,19 @@ func TestListCached_SkipsNonJSON(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 result (only valid json), got %d", len(results))
+	}
+}
+
+func TestCachedResultFresh(t *testing.T) {
+	c := &CachedResult{ContentHash: ContentHash("v1"), RubricVersion: RubricVersion}
+	if !c.Fresh("v1") {
+		t.Error("expected entry for identical content and rubric to be fresh")
+	}
+	if c.Fresh("v2") {
+		t.Error("expected entry for edited content to be stale")
+	}
+	old := &CachedResult{ContentHash: ContentHash("v1")}
+	if old.Fresh("v1") {
+		t.Error("expected entry without a rubric version to be stale")
 	}
 }

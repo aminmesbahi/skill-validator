@@ -555,7 +555,8 @@ func TestValidateCommand_AllowedDirsSkill_WithoutFlag(t *testing.T) {
 	dir := fixtureDir(t, "allowed-dirs-skill")
 
 	r := structure.Validate(dir, structure.Options{})
-	// Without --allow-dirs, evals/ and testing/ should produce warnings
+	// Without --allow-dirs, testing/ should produce a warning; evals/ is a
+	// conventional directory (agentskills.io) and is accepted.
 	hasEvalsWarning := false
 	hasTestingWarning := false
 	for _, res := range r.Results {
@@ -566,8 +567,8 @@ func TestValidateCommand_AllowedDirsSkill_WithoutFlag(t *testing.T) {
 			hasTestingWarning = true
 		}
 	}
-	if !hasEvalsWarning {
-		t.Error("expected warning for evals/ without --allow-dirs")
+	if hasEvalsWarning {
+		t.Error("expected no warning for conventional evals/ directory")
 	}
 	if !hasTestingWarning {
 		t.Error("expected warning for testing/ without --allow-dirs")

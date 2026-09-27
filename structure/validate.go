@@ -4,6 +4,8 @@
 package structure
 
 import (
+	"slices"
+
 	"github.com/agent-ecosystem/skill-validator/skill"
 	"github.com/agent-ecosystem/skill-validator/types"
 	"github.com/agent-ecosystem/skill-validator/util"
@@ -79,12 +81,22 @@ func Validate(dir string, opts Options) *types.Report {
 	// Internal link checks (broken relative links are a structural issue)
 	report.Results = append(report.Results, CheckInternalLinks(dir, s.Body)...)
 
+	// Authoring conventions: forward-slash paths, TOCs in long references
+	report.Results = append(report.Results, CheckPathSeparators(s.Body)...)
+	report.Results = append(report.Results, CheckReferenceTOC(dir)...)
+
 	// Orphan file checks (files in recognized dirs that are never referenced)
 	if !opts.SkipOrphans {
 		report.Results = append(report.Results, CheckOrphanFiles(dir, s.Body, opts)...)
 		if opts.AllowFlatLayouts {
 			report.Results = append(report.Results, CheckFlatOrphanFiles(dir, s.Body)...)
 		}
+	}
+
+	// Evals: validate evals/evals.json. Listing evals in --allow-dirs opts
+	// out, for skills that keep evals in their own format.
+	if !slices.Contains(opts.AllowDirs, "evals") {
+		report.Results = append(report.Results, CheckEvals(dir, s.Frontmatter.Name)...)
 	}
 
 	report.Tally()

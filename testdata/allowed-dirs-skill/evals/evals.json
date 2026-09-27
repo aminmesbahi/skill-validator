@@ -1,9 +1,11 @@
 {
-  "tests": [
+  "skill_name": "allowed-dirs-skill",
+  "evals": [
     {
-      "name": "basic_usage",
+      "id": 1,
       "prompt": "Show me how to use this skill",
-      "expected": "Follow the reference guide"
+      "expected_output": "Follow the reference guide",
+      "files": ["evals/files/sample_input.txt"]
     }
   ]
 }

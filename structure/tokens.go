@@ -348,7 +348,7 @@ func countOtherFiles(dir string, enc tokenizer.Codec, opts Options, exclusions *
 		}
 
 		if entry.IsDir() {
-			if standardDirs[strings.ToLower(name)] {
+			if standardDirs[strings.ToLower(name)] || conventionDirs[name] {
 				continue
 			}
 			if exclusions.excludes(name) {

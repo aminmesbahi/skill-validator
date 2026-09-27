@@ -12,7 +12,7 @@ func ExampleNewClient() {
 	client, err := judge.NewClient(judge.ClientOptions{
 		Provider: "anthropic",
 		APIKey:   "your-api-key",
-		// Model defaults to claude-sonnet-4-5-20250929
+		// Model defaults to claude-sonnet-5
 	})
 	if err != nil {
 		panic(err)
@@ -20,7 +20,7 @@ func ExampleNewClient() {
 
 	fmt.Printf("Provider: %s, Model: %s\n", client.Provider(), client.ModelName())
 	// Output:
-	// Provider: anthropic, Model: claude-sonnet-4-5-20250929
+	// Provider: anthropic, Model: claude-sonnet-5
 }
 
 // ExampleNewClient_claudeCLI demonstrates creating a claude-cli client.

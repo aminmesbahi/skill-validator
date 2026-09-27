@@ -6,8 +6,8 @@ import (
 
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
-	Short: "Analyze skill content or contamination",
-	Long:  "Parent command for content and contamination analysis subcommands.",
+	Short: "Analyze skill content, contamination, or security",
+	Long:  "Parent command for content, contamination, and security analysis subcommands.",
 }
 
 func init() {

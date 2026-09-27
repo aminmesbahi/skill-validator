@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `analyze security` command and `security` check group (on by default in
+  `check`): scans skill files for prompt injection, credential access and
+  exfiltration, remote code execution (`curl … | sh`), disabled permission
+  checks, committed secrets, and invisible characters. The `security`
+  package is experimental
+- `evals/evals.json` validation against the agentskills.io format, and an
+  informational note when a skill has no evals. Listing `evals` in
+  `--allow-dirs` skips the format check
+- `evals/` and `agents/` (e.g. OpenAI Codex's `agents/openai.yaml`) are
+  accepted as conventional directories and excluded from token accounting
+- Authoring checks from Anthropic's skill guidance: reference files linked
+  only from other references (one-level-deep rule), reference files over 100
+  lines without a table of contents, and backslash paths in SKILL.md
+- Description checks: XML tags and the reserved words `anthropic`/`claude`
+  in names (rejected by the Claude API), first- or second-person wording, and
+  no statement of when to use the skill
+- Client extension fields (`when_to_use`, `disable-model-invocation`,
+  `paths`, and other Claude Code and Grok Build fields) get a portability
+  note instead of an "unrecognized field" warning, and `description` plus
+  `when_to_use` over Claude Code's 1,536-character listing limit is flagged
+- Content metrics `emphasis_markers`, `emphasis_ratio`, and
+  `rationale_markers`, with an informational note when all-caps emphasis is
+  dense
+
+### Changed
+
+- Skill names follow the `skills-ref` reference validator: NFKC-normalized
+  Unicode lowercase letters and digits are valid (with a portability warning
+  for non-ASCII names) instead of being rejected
+- The LLM judge's Directive Precision rubric rewards unambiguous, gated
+  instructions that give their reasons, and no longer rewards emphatic
+  language; Novelty and Token Efficiency now count discoverable overviews and
+  rarely applicable instructions against a skill. Cached scores from the old
+  rubric are re-scored on the next run
+- Default Anthropic judge model is now `claude-sonnet-5`; the default judge
+  content limit is 20,000 characters (up from 8,000), enough for a SKILL.md
+  at the spec's 5,000-token ceiling; the judge HTTP timeout is 120 seconds
+
+### Fixed
+
+- Judge content truncation counts characters, not bytes, so it no longer
+  splits multibyte characters or cuts CJK content to a third of the limit
+- Cached judge scores are no longer served after the scored file changes;
+  the stored content hash is now checked, as the README described
+
 ## [1.6.2]
 
 ### Fixed

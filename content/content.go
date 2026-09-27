@@ -13,7 +13,10 @@ import (
 )
 
 // strongMarkerRes contains pre-compiled patterns for strong directive language
-// markers (must, always, never, etc.) used to measure instruction specificity.
+// markers (must, always, never, etc.) used to measure instruction specificity:
+// the share of directive language that is strong rather than hedged. It is
+// descriptive, not a quality score — a skill that explains when and why can
+// be precise with few strong markers.
 var strongMarkerRes = compilePatterns([]string{
 	`\bmust\b`, `\balways\b`, `\bnever\b`, `\bshall\b`,
 	`\brequired\b`, `\bdo not\b`, `\bdon't\b`, `\bensure\b`,
@@ -27,6 +30,26 @@ var weakMarkerRes = compilePatterns([]string{
 	`\boptional\b`, `\bpossibly\b`, `\bsuggested\b`,
 	`\bprefer\b`, `\btry to\b`, `\bif possible\b`,
 })
+
+// emphasisPattern matches all-caps emphasis (MUST, NEVER, CRITICAL, ...).
+// Current Claude and GPT models follow instructions closely, so shouted
+// directives cause overtriggering, and when many lines are emphasized none
+// stands out. Matched case-sensitively: lowercase "must" is plain language.
+var emphasisPattern = regexp.MustCompile(`\b(MUST|NEVER|ALWAYS|CRITICAL|IMPORTANT|MANDATORY|REQUIRED|SHALL|ESSENTIAL|DO NOT|DON'T)\b`)
+
+// rationaleMarkerRes matches phrases that explain why an instruction exists.
+// Instructions that give their reason generalize better than bare rules.
+var rationaleMarkerRes = compilePatterns([]string{
+	`\bbecause\b`, `\bso that\b`, `\botherwise\b`, `\bto avoid\b`,
+	`\bto prevent\b`, `\bwhich means\b`, `\bthis ensures\b`, `\bthe reason\b`,
+})
+
+// Thresholds for the emphasis advisory: at least this many all-caps
+// markers, appearing at this rate per sentence.
+const (
+	emphasisAdvisoryMin   = 5
+	emphasisAdvisoryRatio = 0.1
+)
 
 func compilePatterns(patterns []string) []*regexp.Regexp {
 	res := make([]*regexp.Regexp, len(patterns))
@@ -274,6 +297,16 @@ func AnalyzeWithConfig(content string, cfg *ImperativeConfig) *types.ContentRepo
 		instructionSpecificity = float64(strongCount) / float64(totalMarkers)
 	}
 
+	// Emphasis and rationale, measured on prose only (code is not advice)
+	prose := util.CodeBlockStrip.ReplaceAllString(content, "")
+	prose = util.InlineCodeStrip.ReplaceAllString(prose, "")
+	emphasisCount := len(emphasisPattern.FindAllString(prose, -1))
+	emphasisRatio := 0.0
+	if sentenceCount > 0 {
+		emphasisRatio = float64(emphasisCount) / float64(sentenceCount)
+	}
+	rationaleCount := countMarkerMatches(prose, rationaleMarkerRes)
+
 	// Section count (H2+ headers)
 	sectionCount := len(sectionPattern.FindAllString(content, -1))
 
@@ -292,9 +325,32 @@ func AnalyzeWithConfig(content string, cfg *ImperativeConfig) *types.ContentRepo
 		StrongMarkers:          strongCount,
 		WeakMarkers:            weakCount,
 		InstructionSpecificity: util.RoundTo(instructionSpecificity, 4),
+		EmphasisMarkers:        emphasisCount,
+		EmphasisRatio:          util.RoundTo(emphasisRatio, 4),
+		RationaleMarkers:       rationaleCount,
 		SectionCount:           sectionCount,
 		ListItemCount:          listItemCount,
 	}
+}
+
+// Advisories returns informational results for content patterns that
+// current agent-vendor guidance advises against. file names the analyzed
+// file in the results.
+func Advisories(cr *types.ContentReport, file string) []types.Result {
+	if cr == nil {
+		return nil
+	}
+	ctx := types.ResultContext{Category: "Content", File: file}
+	var results []types.Result
+	if cr.EmphasisMarkers >= emphasisAdvisoryMin && cr.EmphasisRatio >= emphasisAdvisoryRatio {
+		results = append(results, ctx.Infof(
+			"%d all-caps emphasis markers (MUST, NEVER, CRITICAL, ...) across %d sentences — current models follow "+
+				"instructions closely and overtrigger on shouted directives, and when many lines are emphasized none "+
+				"stands out; use plain wording, explain why an instruction matters, and reserve emphasis for the one "+
+				"rule agents keep missing",
+			cr.EmphasisMarkers, cr.SentenceCount))
+	}
+	return results
 }
 
 func countImperativeSentencesWithDetector(sentences []string, d *imperativeDetector) int {

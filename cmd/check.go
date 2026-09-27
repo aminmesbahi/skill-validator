@@ -27,15 +27,15 @@ var (
 
 var checkCmd = &cobra.Command{
 	Use:   "check <path>",
-	Short: "Run all checks (structure + links + content + contamination)",
+	Short: "Run all checks (structure + links + content + contamination + security)",
 	Long:  "Runs all validation and analysis checks. Use --only or --skip to select specific check groups.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runCheck,
 }
 
 func init() {
-	checkCmd.Flags().StringSliceVar(&checkOnly, "only", nil, "check groups to run: structure,links,content,contamination (comma-separated or repeatable)")
-	checkCmd.Flags().StringSliceVar(&checkSkip, "skip", nil, "check groups to skip: structure,links,content,contamination (comma-separated or repeatable)")
+	checkCmd.Flags().StringSliceVar(&checkOnly, "only", nil, "check groups to run: structure,links,content,contamination,security (comma-separated or repeatable)")
+	checkCmd.Flags().StringSliceVar(&checkSkip, "skip", nil, "check groups to skip: structure,links,content,contamination,security (comma-separated or repeatable)")
 	checkCmd.Flags().BoolVar(&perFileCheck, "per-file", false, "show per-file reference analysis")
 	checkCmd.Flags().BoolVar(&checkSkipOrphans, "skip-orphans", false,
 		"skip orphan file detection (unreferenced files in scripts/, references/, assets/)")
@@ -58,6 +58,7 @@ var validGroups = map[orchestrate.CheckGroup]bool{
 	orchestrate.GroupLinks:         true,
 	orchestrate.GroupContent:       true,
 	orchestrate.GroupContamination: true,
+	orchestrate.GroupSecurity:      true,
 }
 
 func runCheck(cmd *cobra.Command, args []string) error {

@@ -14,13 +14,27 @@ import (
 
 // CachedResult holds a scoring result with metadata for cache storage.
 type CachedResult struct {
-	Provider    string          `json:"provider"`
-	Model       string          `json:"model"`
-	File        string          `json:"file"`
-	Type        string          `json:"type"`
-	ContentHash string          `json:"content_hash"`
-	ScoredAt    time.Time       `json:"scored_at"`
-	Scores      json.RawMessage `json:"scores"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	File        string `json:"file"`
+	Type        string `json:"type"`
+	ContentHash string `json:"content_hash"`
+	// RubricVersion records the judge prompts the scores came from. Empty
+	// for entries written before versioning.
+	RubricVersion string          `json:"rubric_version,omitempty"`
+	ScoredAt      time.Time       `json:"scored_at"`
+	Scores        json.RawMessage `json:"scores"`
+}
+
+// RubricVersion identifies the current judge prompts. Bump it whenever a
+// rubric changes, so scores cached under the old rubric are re-scored.
+const RubricVersion = "2"
+
+// Fresh reports whether a cached result still applies: it was scored from
+// the same content under the current rubric. A stale entry must be
+// re-scored rather than served, or edits to a file would never be scored.
+func (c *CachedResult) Fresh(content string) bool {
+	return c.ContentHash == ContentHash(content) && c.RubricVersion == RubricVersion
 }
 
 // CacheKey generates a deterministic cache key from provider, model, score type,

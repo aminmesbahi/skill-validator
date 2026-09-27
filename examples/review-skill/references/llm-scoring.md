@@ -3,6 +3,14 @@
 Provider-specific prerequisites and LLM scoring steps. Only follow this if the
 user selected an LLM provider in Step 0.
 
+## Contents
+
+- Provider Prerequisites (Anthropic, OpenAI, Claude CLI, OpenAI-compatible, cross-model)
+- Run LLM Scoring (per provider, after completion, on failure)
+- Cross-Model Comparison
+- Interpret LLM Scores (thresholds, novelty, `novel_info`, caveats)
+- Full Review Summary
+
 ## Provider Prerequisites
 
 Complete after Step 1a (binary check) passes.
@@ -21,7 +29,7 @@ If not set, tell the user to export it:
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The default model is `claude-sonnet-4-5-20250929`. The user can specify a
+The default model is `claude-sonnet-5`. The user can specify a
 different Anthropic model with the `--model` flag.
 
 ### OpenAI provider

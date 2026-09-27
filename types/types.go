@@ -64,6 +64,9 @@ type ContentReport struct {
 	StrongMarkers          int      `json:"strong_markers"`
 	WeakMarkers            int      `json:"weak_markers"`
 	InstructionSpecificity float64  `json:"instruction_specificity"`
+	EmphasisMarkers        int      `json:"emphasis_markers"`
+	EmphasisRatio          float64  `json:"emphasis_ratio"`
+	RationaleMarkers       int      `json:"rationale_markers"`
 	SectionCount           int      `json:"section_count"`
 	ListItemCount          int      `json:"list_item_count"`
 }
