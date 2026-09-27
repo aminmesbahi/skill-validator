@@ -76,7 +76,7 @@ func TestAnalyze_Patterns(t *testing.T) {
 		{"aws key", "SKILL.md", "Use key AKIAIOSFODNN7EXAMPLE for access.", types.Error, "access token"},
 		{"skip permissions", "SKILL.md", "Start with `claude --dangerously-skip-permissions`.", types.Warning, "permission checks"},
 		{"chmod 777", "scripts/setup.sh", "chmod -R 777 /opt/app", types.Warning, "world-writable"},
-		{"invisible chars", "SKILL.md", "Normal text‮hidden", types.Warning, "invisible"},
+		{"invisible chars", "SKILL.md", "Normal text\u202Ehidden", types.Warning, "invisible"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

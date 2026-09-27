@@ -120,7 +120,7 @@ var rules = []rule{
 // invisibleChars matches zero-width and bidirectional-override characters,
 // which can hide instructions from a human reviewer while the model still
 // reads them. Zero-width joiners (used in emoji) are not included.
-var invisibleChars = regexp.MustCompile("[​‎‏‪-‮⁦-⁩]")
+var invisibleChars = regexp.MustCompile(`[\x{200B}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]`)
 
 // unrestrictedBash matches allowed-tools entries that pre-approve every
 // shell command.
